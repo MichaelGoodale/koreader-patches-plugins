@@ -2,6 +2,8 @@ local Device = require("device")
 local Blitbuffer = require("ffi/blitbuffer")
 local UIManager = require("ui/uimanager")
 local ScreenSaverWidget = require("ui/widget/screensaverwidget")
+local Font = require("ui/font")
+local TextWidget = require("ui/widget/textwidget")
 
 local FrameContainer = require("ui/widget/container/framecontainer")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
@@ -12,33 +14,86 @@ local OverlapGroup = require("ui/widget/overlapgroup")
 
 local Screen = Device.screen
 
+local function getBookColor(index)
+    local shades = {
+        Blitbuffer.Color8(0x30),
+        Blitbuffer.Color8(0x70),
+        Blitbuffer.Color8(0x50),
+        Blitbuffer.Color8(0xB0),
+        Blitbuffer.Color8(0x90),
+    }
+    return shades[((index - 1) % #shades) + 1]
+end
+
 local function buildBookshelfWidget()
     local screen_size = Screen:getSize()
 
-    local spine_width = Screen:scaleBySize(40)
-    local spine_height = math.floor(screen_size.h * 0.8)
-
-    local spine_content = VerticalSpan:new{
-        width = spine_height,
+    local num_books = 5
+    local books_group = HorizontalGroup:new {
+        align = "bottom",
     }
 
-    local spine = FrameContainer:new{
-        width = spine_width,
-        height = spine_height,
-        background = Blitbuffer.COLOR_BLACK,
-        bordersize = 0,
-        spine_content,
-    }
+    local max_height = 0
 
-    return OverlapGroup:new{
-        dimen = screen_size,
-        VerticalGroup:new{
-            VerticalSpan:new{
-                width = screen_size.h - spine_height,
+    for i = 1, num_books do
+        local spine_width = Screen:scaleBySize(math.random(80, 100))
+        local height_percent = 0.7 + (math.random() * 0.15) -- 70-85%
+        local spine_height = math.floor(screen_size.h * height_percent)
+
+        max_height = math.max(max_height, spine_height)
+
+        local base_color = getBookColor(i)
+        local accent_color = Blitbuffer.Color8(math.min(0xFF, base_color.a + 0x50))
+
+        local progress = math.random(10, 95)
+        local progress_height = math.floor(spine_height * (progress / 100))
+
+        local spine_content = VerticalGroup:new {
+            align = "center",
+            -- Progress bar (fills from top based on % read)
+            FrameContainer:new {
+                width = spine_width,
+                height = progress_height,
+                background = accent_color,
+                bordersize = 0,
+                VerticalSpan:new { width = progress_height },
             },
-            HorizontalGroup:new{
-                HorizontalSpan:new{ width = Screen:scaleBySize(20) },
-                spine,
+            -- Remaining space
+            FrameContainer:new {
+                width = spine_width,
+                height = spine_height - progress_height,
+                background = base_color,
+                bordersize = 0,
+                VerticalSpan:new { width = spine_height - progress_height },
+            }
+        }
+
+        local spine = FrameContainer:new {
+            width = spine_width,
+            height = spine_height,
+            background = getBookColor(i),
+            bordersize = 1,
+            color = Blitbuffer.COLOR_BLACK,
+            -- padding = 0,
+            spine_content,
+        }
+
+        table.insert(books_group, spine)
+
+        if i < num_books then
+            table.insert(books_group, HorizontalSpan:new { width = spine_width + Screen:scaleBySize(math.random(1, 4)) })
+        end
+    end
+
+    return OverlapGroup:new {
+        dimen = screen_size,
+        VerticalGroup:new {
+            VerticalSpan:new {
+                width = screen_size.h - max_height - Screen:scaleBySize(20),
+            },
+            HorizontalGroup:new {
+                HorizontalSpan:new { width = Screen:scaleBySize(20) },
+                books_group
             },
         },
     }
@@ -61,7 +116,7 @@ Screensaver.show = function(self)
 
     local widget = buildBookshelfWidget()
 
-    self.screensaver_widget = ScreenSaverWidget:new{
+    self.screensaver_widget = ScreenSaverWidget:new {
         widget = widget,
         background = Blitbuffer.COLOR_WHITE,
         covers_fullscreen = true,
