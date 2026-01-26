@@ -16,9 +16,8 @@ local Screen = Device.screen
 
 local function getBookColor(index)
     local shades = {
-        Blitbuffer.Color8(0x30),
-        Blitbuffer.Color8(0x70),
-        Blitbuffer.Color8(0x50),
+        Blitbuffer.Color8(0xA0),
+        Blitbuffer.Color8(0x80),
         Blitbuffer.Color8(0xB0),
         Blitbuffer.Color8(0x90),
     }
@@ -28,72 +27,117 @@ end
 local function buildBookshelfWidget()
     local screen_size = Screen:getSize()
 
-    local num_books = 5
-    local books_group = HorizontalGroup:new {
-        align = "bottom",
+    -- fake book data
+    local books = {
+        { title = "Neuromancer", author = "William Gibson" },
+        { title = "Foundation",  author = "Isaac Asimov" },
+        { title = "Dune",        author = "Frank Herbert" },
+        { title = "1984",        author = "George Orwell" },
+        { title = "The Hobbit",  author = "J.R.R. Tolkien" },
     }
 
-    local max_height = 0
+    local num_books = 5
+    local books_stack = VerticalGroup:new {
+        align = "left",
+    }
+
+    local max_width = 0
+    local total_height = 0
+    local spacing = Screen:scaleBySize(3)
 
     for i = 1, num_books do
-        local spine_width = Screen:scaleBySize(math.random(80, 100))
-        local height_percent = 0.7 + (math.random() * 0.15) -- 70-85%
-        local spine_height = math.floor(screen_size.h * height_percent)
+        local book = books[i]
+        -- book thickness
+        local book_height = Screen:scaleBySize(math.random(90, 120))
+        local height_percent = 0.8 + (math.random() * 0.15) -- 80-95%
+        local book_width = math.floor(screen_size.w * height_percent)
 
-        max_height = math.max(max_height, spine_height)
+        max_width = math.max(max_width, book_width)
+        total_height = total_height + book_height
 
         local base_color = getBookColor(i)
         local accent_color = Blitbuffer.Color8(math.min(0xFF, base_color.a + 0x50))
 
         local progress = math.random(10, 95)
-        local progress_height = math.floor(spine_height * (progress / 100))
+        local progress_width = math.floor(book_width * (progress / 100))
 
-        local spine_content = VerticalGroup:new {
+        local title_face = Font:getFace("cfont", Screen:scaleBySize(12))
+        local author_face = Font:getFace("cfont", Screen:scaleBySize(9))
+
+        local title_widget = TextWidget:new {
+            text = book.title,
+            face = title_face,
+            fgcolor = Blitbuffer.COLOR_BLACK,
+            bold = true,
+        }
+
+        local author_widget = TextWidget:new {
+            text = book.author,
+            face = author_face,
+            fgcolor = Blitbuffer.Color8(0x40),
+        }
+
+        local spine_content = HorizontalGroup:new {
             align = "center",
             -- Progress bar (fills from top based on % read)
             FrameContainer:new {
-                width = spine_width,
-                height = progress_height,
-                background = accent_color,
-                bordersize = 0,
-                VerticalSpan:new { width = progress_height },
+                width = book_width,
+                height = book_height,
+                background = base_color,
+                bordersize = 1,
+                color = Blitbuffer.COLOR_BLACK,
+                HorizontalSpan:new { width = progress_width },
             },
             -- Remaining space
             FrameContainer:new {
-                width = spine_width,
-                height = spine_height - progress_height,
-                background = base_color,
-                bordersize = 0,
-                VerticalSpan:new { width = spine_height - progress_height },
+                width = book_width - progress_width,
+                height = book_height,
+                background = accent_color,
+                bordersize = 1,
+                color = Blitbuffer.COLOR_BLACK,
+                HorizontalSpan:new { width = book_width - progress_width },
             }
         }
 
-        local spine = FrameContainer:new {
-            width = spine_width,
-            height = spine_height,
-            background = getBookColor(i),
-            bordersize = 1,
-            color = Blitbuffer.COLOR_BLACK,
-            -- padding = 0,
+        local full_book = OverlapGroup:new {
+            dimen = { w = max_width, h = book_height },
             spine_content,
+            VerticalGroup:new {
+                align = "left",
+                VerticalSpan:new { width = Screen:scaleBySize(8) },
+                HorizontalGroup:new {
+                    HorizontalSpan:new { width = Screen:scaleBySize(10) },
+                    title_widget,
+                },
+                VerticalSpan:new { width = Screen:scaleBySize(2) },
+                HorizontalGroup:new {
+                    HorizontalSpan:new { width = Screen:scaleBySize(10) },
+                    author_widget,
+                },
+            },
         }
 
-        table.insert(books_group, spine)
+        table.insert(books_stack, full_book)
 
         if i < num_books then
-            table.insert(books_group, HorizontalSpan:new { width = spine_width + Screen:scaleBySize(math.random(1, 4)) })
+            table.insert(books_stack,
+                VerticalSpan:new { width = spacing })
+
+            total_height = total_height + spacing
         end
     end
+
+    local top_margin = math.max(0, screen_size.h - total_height)
 
     return OverlapGroup:new {
         dimen = screen_size,
         VerticalGroup:new {
             VerticalSpan:new {
-                width = screen_size.h - max_height - Screen:scaleBySize(20),
+                width = top_margin,
             },
             HorizontalGroup:new {
                 HorizontalSpan:new { width = Screen:scaleBySize(20) },
-                books_group
+                books_stack
             },
         },
     }
