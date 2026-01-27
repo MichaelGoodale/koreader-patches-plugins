@@ -4,6 +4,7 @@ local UIManager = require("ui/uimanager")
 local ScreenSaverWidget = require("ui/widget/screensaverwidget")
 local Font = require("ui/font")
 local TextWidget = require("ui/widget/textwidget")
+local ImageWidget = require("ui/widget/imagewidget")
 local DataStorage = require("datastorage")
 local SQ3 = require("lua-ljsqlite3/init")
 local lfs = require("libs/libkoreader-lfs")
@@ -121,22 +122,25 @@ local function buildBookshelfWidget()
             { title = "Neuromancer", author = "William Gibson", pages = 200,  progress = 45 },
             { title = "Foundation",  author = "Isaac Asimov",   pages = 1200, progress = 67 },
             { title = "Dune",        author = "Frank Herbert",  pages = 1000, progress = 23 },
-            { title = "1984",        author = "George Orwell",  pages = 300,  progress = 89 },
-            { title = "The Hobbit",  author = "J.R.R. Tolkien", pages = 650,  progress = 12 },
+            { title = "1984",        author = "George Orwell",  pages = 180,  progress = 89 },
         }
     end
 
-    local num_books = 5
+    local num_books = #books
     local books_stack = VerticalGroup:new {
         align = "left",
     }
 
     local max_width = 0
     local total_height = 0
+
     local spacing = Screen:scaleBySize(3)
+    local shadow_size = Screen:scaleBySize(2)
+    local shadow_color = Blitbuffer.Color8(0x40)
 
     for i = 1, num_books do
         local book = books[i]
+        local left_offset = Screen:scaleBySize(math.random(0, 15))
 
         -- Small book 200 (thin), Large book 1000 (thick)
         local page_count = book.pages or 300
@@ -152,7 +156,7 @@ local function buildBookshelfWidget()
         local book_width = math.floor(screen_size.w * width_percent)
 
         max_width = math.max(max_width, book_width)
-        total_height = total_height + book_height
+        total_height = total_height + book_height + shadow_size + shadow_size
 
         local base_color = getBookColor(i)
         local accent_color = Blitbuffer.Color8(math.min(0xFF, base_color.a + 0x50))
@@ -160,8 +164,8 @@ local function buildBookshelfWidget()
         local progress = book.progress or 0
         local progress_width = math.floor(book_width * (progress / 100))
 
-        local title_face = Font:getFace("cfont", Screen:scaleBySize(10 + math.floor(height_factor * 2)))
-        local author_face = Font:getFace("cfont", Screen:scaleBySize(7 + math.floor(height_factor * 2)))
+        local title_face = Font:getFace("cfont", Screen:scaleBySize(8 + math.floor(height_factor * 2)))
+        local author_face = Font:getFace("cfont", Screen:scaleBySize(5 + math.floor(height_factor * 2)))
 
         local title_widget = TextWidget:new {
             text = book.title,
@@ -178,47 +182,89 @@ local function buildBookshelfWidget()
             max_width = book_width - Screen:scaleBySize(20),
         }
 
+
         local spine_content = HorizontalGroup:new {
-            align = "center",
-            -- Progress bar (fills from top based on % read)
+            -- Progress bar (fills from left based on % read)
             FrameContainer:new {
-                width = book_width,
+                width = progress_width,
                 height = book_height,
                 background = base_color,
-                bordersize = 1,
-                color = Blitbuffer.COLOR_BLACK,
+                bordersize = 0,
+                padding = 0,
                 HorizontalSpan:new { width = progress_width },
             },
-            -- Remaining space
             FrameContainer:new {
                 width = book_width - progress_width,
                 height = book_height,
                 background = accent_color,
-                bordersize = 1,
-                color = Blitbuffer.COLOR_BLACK,
+                bordersize = 0,
+                padding = 0,
                 HorizontalSpan:new { width = book_width - progress_width },
             }
         }
 
-        local full_book = OverlapGroup:new {
-            dimen = { w = max_width, h = book_height },
+        local spine_with_border = FrameContainer:new {
+            width = book_width,
+            height = book_height,
+            bordersize = 1,
+            color = Blitbuffer.COLOR_BLACK,
+            padding = 0,
             spine_content,
-            VerticalGroup:new {
-                align = "left",
-                VerticalSpan:new { width = Screen:scaleBySize(8) },
-                HorizontalGroup:new {
-                    HorizontalSpan:new { width = Screen:scaleBySize(10) },
-                    title_widget,
+        }
+
+        local book_with_shadow = OverlapGroup:new {
+            dimen = { w = book_width + shadow_size + 2, h = book_height + shadow_size + 2 },
+            spine_with_border,
+            -- Right shadow
+            HorizontalGroup:new {
+                HorizontalSpan:new { width = book_width + 2 },
+                FrameContainer:new {
+                    width = shadow_size,
+                    height = book_height + 2,
+                    background = shadow_color,
+                    bordersize = 0,
+                    padding = 0,
+                    HorizontalSpan:new { width = book_width + 2 },
                 },
-                VerticalSpan:new { width = Screen:scaleBySize(2) },
-                HorizontalGroup:new {
-                    HorizontalSpan:new { width = Screen:scaleBySize(10) },
+            },
+            -- Bottom shadow
+            VerticalGroup:new {
+                VerticalSpan:new { width = book_height + 2 },
+                FrameContainer:new {
+                    width = book_width + shadow_size + 2,
+                    height = shadow_size,
+                    background = shadow_color,
+                    bordersize = 0,
+                    padding = 0,
+                    HorizontalSpan:new { width = book_height + 2 },
+                },
+            },
+        }
+
+        local full_book = OverlapGroup:new {
+            dimen = { w = max_width, h = book_height + shadow_size },
+            book_with_shadow,
+            -- Centered text overlay
+            HorizontalGroup:new {
+                align = "center",
+                HorizontalSpan:new { width = book_width / 2 - (title_widget:getSize().w / 2) },
+                VerticalGroup:new {
+                    align = "center",
+                    VerticalSpan:new {
+                        width = (book_height - title_widget:getSize().h - author_widget:getSize().h - Screen:scaleBySize(2)) / 2
+                    },
+                    title_widget,
+                    VerticalSpan:new { width = Screen:scaleBySize(2) },
                     author_widget,
                 },
             },
         }
 
-        table.insert(books_stack, full_book)
+
+        table.insert(books_stack, HorizontalGroup:new {
+            HorizontalSpan:new { width = left_offset },
+            full_book,
+        })
 
         if i < num_books then
             table.insert(books_stack,
@@ -230,18 +276,49 @@ local function buildBookshelfWidget()
 
     local top_margin = math.max(0, screen_size.h - total_height)
 
-    return OverlapGroup:new {
-        dimen = screen_size,
-        VerticalGroup:new {
-            VerticalSpan:new {
-                width = top_margin - Screen:scaleBySize(20),
-            },
-            HorizontalGroup:new {
-                HorizontalSpan:new { width = Screen:scaleBySize(20) },
-                books_stack
-            },
+    local cat_widget = nil
+    local cat_path = "patches/cat.png"
+    local cat_size = Screen:scaleBySize(200)
+    local cat_attrs = lfs.attributes(cat_path, "mode")
+    if cat_attrs == "file" then
+        cat_widget = ImageWidget:new {
+            file = cat_path,
+            width = Screen:scaleBySize(200),
+            height = Screen:scaleBySize(200),
+            alpha = true,
+        }
+    end
+
+    local main_stack = VerticalGroup:new {
+        VerticalSpan:new {
+            width = top_margin - Screen:scaleBySize(20),
+        },
+        HorizontalGroup:new {
+            HorizontalSpan:new { width = Screen:scaleBySize(20) },
+            books_stack
         },
     }
+
+    if cat_widget then
+        return OverlapGroup:new {
+            dimen = screen_size,
+            main_stack,
+            VerticalGroup:new {
+                VerticalSpan:new {
+                    width = top_margin - cat_size + Screen:scaleBySize(10),
+                },
+                HorizontalGroup:new {
+                    HorizontalSpan:new { width = screen_size.w - cat_size - Screen:scaleBySize(50) },
+                    cat_widget,
+                },
+            },
+        }
+    else
+        return OverlapGroup:new {
+            dimen = screen_size,
+            main_stack,
+        }
+    end
 end
 
 local Screensaver = require("ui/screensaver")
