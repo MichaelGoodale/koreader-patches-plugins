@@ -20,27 +20,6 @@ local Screen = Device.screen
 
 local STATISTICS_DB_PATH = DataStorage:getSettingsDir() .. "/statistics.sqlite3"
 
-local function createDottedBackground()
-    local screen_size = Screen:getSize()
-    local bb = Blitbuffer.new(screen_size.w, screen_size.h, Blitbuffer.TYPE_BB8)
-
-    bb:fill(Blitbuffer.Color8(0xF5)) -- Light base
-
-    local dot_spacing = Screen:scaleBySize(25)
-    local dot_size = Screen:scaleBySize(2)
-    for y = dot_spacing, screen_size.h - 1, dot_spacing do
-        for x = dot_spacing, screen_size.w - 1, dot_spacing do
-            bb:paintRect(x, y, dot_size, dot_size, Blitbuffer.Color8(0xD0))
-        end
-    end
-
-    return ImageWidget:new {
-        image = bb,
-        width = screen_size.w,
-        height = screen_size.h,
-    }
-end
-
 local function getRecentBooks(max_books)
     if not STATISTICS_DB_PATH or STATISTICS_DB_PATH == "" then
         print("DEBUG: No database path")
@@ -147,18 +126,43 @@ local function formatTimeRemaining(seconds)
     end
 end
 
+local function createDottedBackground()
+    local screen_size = Screen:getSize()
+    local bb = Blitbuffer.new(screen_size.w, screen_size.h, Blitbuffer.TYPE_BB8)
+
+    bb:fill(Blitbuffer.Color8(0xF5)) -- Light base
+
+    local dot_spacing = Screen:scaleBySize(25)
+    local dot_size = Screen:scaleBySize(2)
+    for y = dot_spacing, screen_size.h - 1, dot_spacing do
+        for x = dot_spacing, screen_size.w - 1, dot_spacing do
+            bb:paintRect(x, y, dot_size, dot_size, Blitbuffer.Color8(0xD0))
+        end
+    end
+
+    return ImageWidget:new {
+        image = bb,
+        width = screen_size.w,
+        height = screen_size.h,
+    }
+end
+
 local function isColorScreen()
     return Screen:isColorEnabled() or Screen:isColorScreen()
 end
 
-local function getBookColor(index)
+local function getBookColor(index, getRandom)
     if isColorScreen() then
         local colors = {
             Blitbuffer.ColorRGB32(220, 120, 120, 255), -- Light red
             Blitbuffer.ColorRGB32(120, 190, 120, 255), -- Light green
             Blitbuffer.ColorRGB32(130, 160, 220, 255), -- Light blue
         }
-        return colors[((index - 1) % #colors) + 1]
+        if getRandom then
+            return colors[math.random(1, #colors)]
+        else
+            return colors[((index - 1) % #colors) + 1]
+        end
     else
         local shades = {
             Blitbuffer.Color8(0xA0),
@@ -166,7 +170,11 @@ local function getBookColor(index)
             Blitbuffer.Color8(0xB0),
             Blitbuffer.Color8(0x90),
         }
-        return shades[((index - 1) % #shades) + 1]
+        if getRandom then
+            return shades[math.random(1, #shades)]
+        else
+            return shades[((index - 1) % #shades) + 1]
+        end
     end
 end
 
@@ -206,6 +214,7 @@ local function buildBookshelfWidget()
     local show_time_remaining = true
     local show_percent_completed = true
     local show_book_bands = true
+    local use_random_colors = false
     local assume_finished_at_percent = 97
 
     print("DEBUG: Screen DPI = " .. tostring(Screen:getDPI()))
@@ -213,16 +222,16 @@ local function buildBookshelfWidget()
 
     local books = getRecentBooks(5)
 
-    if not books then
-        -- Fake book data as fallback/if no data yet
-        books = {
-            { title = "1984",                   author = "George Orwell",     pages = 180,  progress = 89, time_remaining = 24729 },
-            { title = "Mistborn: Final Empire", author = "Brandon Sanderson", pages = 600,  progress = 98, time_remaining = 6552 },
-            { title = "Neuromancer",            author = "William Gibson",    pages = 200,  progress = 45, time_remaining = 8966 },
-            { title = "Foundation",             author = "Isaac Asimov",      pages = 1200, progress = 67, time_remaining = 22751 },
-            { title = "Dune",                   author = "Frank Herbert",     pages = 1000, progress = 23, time_remaining = 13340 },
-        }
-    end
+    -- if not books then
+    --     -- Fake book data as fallback/if no data yet
+    -- books = {
+    --     { title = "1984",                                    author = "George Orwell",     pages = 180,  progress = 89, time_remaining = 24729 },
+    --     { title = "Mistborn: Final Empire",                  author = "Brandon Sanderson", pages = 600,  progress = 98, time_remaining = 6552 },
+    --     { title = "Neuromancer",                             author = "William Gibson",    pages = 200,  progress = 45, time_remaining = 8966 },
+    --     { title = "Whispers of Scarlet and Midnight Blooms", author = "SakakiHaruna12",    pages = 1200, progress = 67, time_remaining = 22751 },
+    --     { title = "Dune",                                    author = "Frank Herbert",     pages = 1000, progress = 23, time_remaining = 13340 },
+    -- }
+    -- end
 
     local num_books = #books
     local books_stack = VerticalGroup:new {
@@ -263,7 +272,7 @@ local function buildBookshelfWidget()
 
         local band_size = Screen:scaleBySize(5 + math.floor(3 * height_factor))
 
-        local base_color = getBookColor(i)
+        local base_color = getBookColor(i, use_random_colors)
         local accent_color = getAccentColor()
 
         local progress = book.progress or 0
@@ -294,9 +303,9 @@ local function buildBookshelfWidget()
             max_width = 0.7 * book_width,
         }
 
-        local spine_content = nil
+        local spine = nil
         if considerBookComplete(progress, assume_finished_at_percent) then
-            spine_content = HorizontalGroup:new {
+            spine = HorizontalGroup:new {
                 FrameContainer:new {
                     width = book_width,
                     height = book_height,
@@ -307,7 +316,7 @@ local function buildBookshelfWidget()
                 },
             }
         else
-            spine_content = HorizontalGroup:new {
+            spine = HorizontalGroup:new {
                 -- Progress bar (fills from left based on % read)
                 FrameContainer:new {
                     width = progress_width,
@@ -328,18 +337,18 @@ local function buildBookshelfWidget()
             }
         end
 
-        local spine_with_border = FrameContainer:new {
+        spine = FrameContainer:new {
             width = book_width,
             height = book_height,
             bordersize = 1,
             color = Blitbuffer.COLOR_BLACK,
             padding = 0,
-            spine_content,
+            spine,
         }
 
-        local spine_with_shadows = OverlapGroup:new {
+        spine = OverlapGroup:new {
             dimen = { w = book_width + shadow_size + 2, h = book_height + shadow_size + 2 },
-            spine_with_border,
+            spine,
             -- Right shadow
             HorizontalGroup:new {
                 HorizontalSpan:new { width = book_width },
@@ -366,10 +375,10 @@ local function buildBookshelfWidget()
             },
         }
         if show_book_bands then
-            local left_band_loc = math.floor(book_width * 0.05 * (1 + height_factor))
-            spine_with_shadows = OverlapGroup:new {
+            local left_band_loc = math.floor(book_width * 0.05)
+            spine = OverlapGroup:new {
                 dimen = { w = book_width, h = book_height },
-                spine_with_shadows,
+                spine,
                 -- Vertical left band
                 HorizontalGroup:new {
                     HorizontalSpan:new { width = left_band_loc },
@@ -386,9 +395,9 @@ local function buildBookshelfWidget()
             }
 
             if considerBookComplete(progress, assume_finished_at_percent) then
-                spine_with_shadows = OverlapGroup:new {
+                spine = OverlapGroup:new {
                     dimen = { w = book_width, h = book_height },
-                    spine_with_shadows,
+                    spine,
                     -- Vertical left band
                     HorizontalGroup:new {
                         HorizontalSpan:new { width = book_width - left_band_loc - band_size },
@@ -406,9 +415,9 @@ local function buildBookshelfWidget()
             end
         end
 
-        local full_book = OverlapGroup:new {
+        local book_spine = OverlapGroup:new {
             dimen = { w = max_width, h = book_height + shadow_size },
-            spine_with_shadows,
+            spine,
             HorizontalGroup:new {
                 align = "center",
                 HorizontalSpan:new { width = (book_width / 2) - (math.max(title_widget:getSize().w, author_widget:getSize().w) / 2) },
@@ -421,10 +430,9 @@ local function buildBookshelfWidget()
             }
         }
 
-
         table.insert(books_stack, HorizontalGroup:new {
             HorizontalSpan:new { width = left_offset },
-            full_book,
+            book_spine,
         })
 
         if i < num_books then
