@@ -114,6 +114,9 @@ end
 local function buildBookshelfWidget()
     local screen_size = Screen:getSize()
 
+    print("DEBUG: Screen DPI = " .. tostring(Screen:getDPI()))
+    print("DEBUG: Screen size = " .. screen_size.w .. "x" .. screen_size.h)
+
     local books = getRecentBooks(5)
 
     if not books then
@@ -131,6 +134,7 @@ local function buildBookshelfWidget()
         align = "left",
     }
 
+    local top_width = screen_size.w
     local max_width = 0
     local total_height = 0
 
@@ -148,23 +152,30 @@ local function buildBookshelfWidget()
 
         -- book thickness
         local height_factor = (normalized_page_count - 200) / (1000 - 200)
-        local book_height = Screen:scaleBySize(50 + (height_factor * 70))
+        local book_height = math.floor(screen_size.h * (0.08 + (height_factor * 0.05)))
 
         -- book length
         local width_factor = (normalized_page_count - 200) / (1000 - 200)
         local width_percent = 0.60 + (width_factor * 0.25) -- [60-85]%
         local book_width = math.floor(screen_size.w * width_percent)
 
+        if i == 1 then
+            top_width = book_width
+        end
         max_width = math.max(max_width, book_width)
         total_height = total_height + book_height + shadow_size + shadow_size
 
+        local band_size = Screen:scaleBySize(4 + math.floor(2 * height_factor))
+        local band_color = Blitbuffer.Color8(0x30)
+        local band_spacing = Screen:scaleBySize(3)
+
         local base_color = getBookColor(i)
-        local accent_color = Blitbuffer.Color8(math.min(0xFF, base_color.a + 0x50))
+        local accent_color = Blitbuffer.Color8(0xE0) -- Light gray for uncompleted portion
 
         local progress = book.progress or 0
         local progress_width = math.floor(book_width * (progress / 100))
 
-        local title_face = Font:getFace("cfont", Screen:scaleBySize(8 + math.floor(height_factor * 2)))
+        local title_face = Font:getFace("cfont", Screen:scaleBySize(6 + math.floor(height_factor * 3)))
         local author_face = Font:getFace("cfont", Screen:scaleBySize(5 + math.floor(height_factor * 2)))
 
         local title_widget = TextWidget:new {
@@ -172,14 +183,14 @@ local function buildBookshelfWidget()
             face = title_face,
             fgcolor = Blitbuffer.COLOR_BLACK,
             bold = true,
-            max_width = book_width - Screen:scaleBySize(20),
+            max_width = 0.8 * book_width,
         }
 
         local author_widget = TextWidget:new {
             text = book.author,
             face = author_face,
             fgcolor = Blitbuffer.Color8(0x40),
-            max_width = book_width - Screen:scaleBySize(20),
+            max_width = 0.7 * book_width,
         }
 
 
@@ -215,21 +226,33 @@ local function buildBookshelfWidget()
         local book_with_shadow = OverlapGroup:new {
             dimen = { w = book_width + shadow_size + 2, h = book_height + shadow_size + 2 },
             spine_with_border,
+            -- Vertical band overlay
+            HorizontalGroup:new {
+                HorizontalSpan:new { width = book_width - band_size - Screen:scaleBySize(20) },
+                FrameContainer:new {
+                    width = band_size,
+                    height = book_height + 2,
+                    background = band_color,
+                    bordersize = 0,
+                    padding = 0,
+                    HorizontalSpan:new { width = book_width },
+                },
+            },
             -- Right shadow
             HorizontalGroup:new {
                 HorizontalSpan:new { width = book_width + 2 },
                 FrameContainer:new {
-                    width = shadow_size,
-                    height = book_height + 2,
+                    width = shadow_size + 5,
+                    height = book_height + 5,
                     background = shadow_color,
                     bordersize = 0,
                     padding = 0,
-                    HorizontalSpan:new { width = book_width + 2 },
+                    HorizontalSpan:new { width = book_width + 5 },
                 },
             },
             -- Bottom shadow
             VerticalGroup:new {
-                VerticalSpan:new { width = book_height + 2 },
+                VerticalSpan:new { width = book_height + 1 },
                 FrameContainer:new {
                     width = book_width + shadow_size + 2,
                     height = shadow_size,
@@ -254,7 +277,7 @@ local function buildBookshelfWidget()
                         width = (book_height - title_widget:getSize().h - author_widget:getSize().h - Screen:scaleBySize(2)) / 2
                     },
                     title_widget,
-                    VerticalSpan:new { width = Screen:scaleBySize(2) },
+                    VerticalSpan:new { width = Screen:scaleBySize(1) },
                     author_widget,
                 },
             },
@@ -277,7 +300,7 @@ local function buildBookshelfWidget()
     local top_margin = math.max(0, screen_size.h - total_height)
 
     local cat_widget = nil
-    local cat_path = "patches/cat.png"
+    local cat_path = DataStorage:getDataDir() .. "/patches/cat.png"
     local cat_size = Screen:scaleBySize(200)
     local cat_attrs = lfs.attributes(cat_path, "mode")
     if cat_attrs == "file" then
@@ -308,7 +331,7 @@ local function buildBookshelfWidget()
                     width = top_margin - cat_size + Screen:scaleBySize(10),
                 },
                 HorizontalGroup:new {
-                    HorizontalSpan:new { width = screen_size.w - cat_size - Screen:scaleBySize(50) },
+                    HorizontalSpan:new { width = top_width - cat_size + Screen:scaleBySize(10) },
                     cat_widget,
                 },
             },
