@@ -16,6 +16,9 @@ local HorizontalSpan = require("ui/widget/horizontalspan")
 local VerticalSpan = require("ui/widget/verticalspan")
 local OverlapGroup = require("ui/widget/overlapgroup")
 
+local DocSettings = require("docsettings")
+local ReadHistory = require("readhistory")
+
 local Screen = Device.screen
 
 local STATISTICS_DB_PATH = DataStorage:getSettingsDir() .. "/statistics.sqlite3"
@@ -41,7 +44,8 @@ local function getRecentBooks(max_books)
     -- Query for recent books
     local sql_stmt = string.format([[
         SELECT b.title, b.authors, b.pages, MAX(p.start_time) as last_read,
-               (SELECT page FROM page_stat WHERE id_book = b.id ORDER BY start_time DESC LIMIT 1) as current_page
+            (SELECT page FROM page_stat WHERE id_book = b.id ORDER BY start_time DESC LIMIT 1) as current_page,
+            b.total_read_time, b.total_read_pages, b.md5
         FROM book b
         LEFT JOIN page_stat p ON b.id = p.id_book
         GROUP BY b.id
@@ -74,9 +78,18 @@ local function getRecentBooks(max_books)
         local author = results[2][i] or "Unknown Author"
         local pages = tonumber(results[3][i]) or 200
         local current_page = tonumber(results[5][i]) or 1
+        local total_read_time = tonumber(results[6][i]) or 0
+        local total_read_pages = tonumber(results[7][i]) or 0
+        -- Calculate time remaining
+        local time_remaining = nil
+        if total_read_pages > 0 and current_page < pages then
+            local avg_time_per_page = total_read_time / total_read_pages
+            local pages_remaining = pages - current_page
+            time_remaining = math.floor(avg_time_per_page * pages_remaining)
+        end
 
-        print(string.format("DEBUG: Found book - %s by %s (%d/%d pages)",
-            title, author, current_page, pages))
+        print(string.format("DEBUG: Found book - %s by %s (%d/%d pages, time %d)",
+            title, author, current_page, pages, time_remaining))
 
         -- Calculate progress percentage
         local progress = math.floor((current_page / pages) * 100)
@@ -88,6 +101,7 @@ local function getRecentBooks(max_books)
             author = author,
             pages = pages,
             progress = progress,
+            time_remaining = time_remaining,
         })
     end
 
@@ -99,6 +113,20 @@ local function getRecentBooks(max_books)
     end
 
     return books
+end
+
+local function formatTimeRemaining(seconds)
+    if not seconds or seconds <= 0 then
+        return nil
+    end
+    local hours = math.floor(seconds / 3600)
+    local minutes = math.floor((seconds % 3600) / 60)
+
+    if hours > 0 then
+        return string.format("%dh %dm", hours, minutes)
+    else
+        return string.format("%dm", minutes)
+    end
 end
 
 local function isColorScreen()
@@ -136,7 +164,7 @@ local function getBandColor()
     if isColorScreen() then
         return Blitbuffer.ColorRGB32(230, 190, 50, 255) -- Yellow/gold
     else
-        return Blitbuffer.Color8(0x30)
+        return Blitbuffer.Color8(0xFF)
     end
 end
 
@@ -148,9 +176,18 @@ local function getAccentColor()
     end
 end
 
+local function considerBookComplete(progress, assume)
+    return progress >= assume
+end
+
 
 local function buildBookshelfWidget()
     local screen_size = Screen:getSize()
+    local show_cat = true
+    local show_time_remaining = true
+    local show_percent_completed = true
+    local show_book_bands = true
+    local assume_finished_at_percent = 97
 
     print("DEBUG: Screen DPI = " .. tostring(Screen:getDPI()))
     print("DEBUG: Screen size = " .. screen_size.w .. "x" .. screen_size.h)
@@ -159,11 +196,12 @@ local function buildBookshelfWidget()
 
     if not books then
         -- Fake book data as fallback/if no data yet
-        books = {
-            { title = "1984",        author = "George Orwell",  pages = 180,  progress = 89 },
-            { title = "Neuromancer", author = "William Gibson", pages = 200,  progress = 45 },
-            { title = "Foundation",  author = "Isaac Asimov",   pages = 1200, progress = 67 },
-            { title = "Dune",        author = "Frank Herbert",  pages = 1000, progress = 23 },
+        local books = {
+            { title = "1984",                   author = "George Orwell",     pages = 180,  progress = 89, time_remaining = 24729 },
+            { title = "Mistborn: Final Empire", author = "Brandon Sanderson", pages = 600,  progress = 98, time_remaining = 6552 },
+            { title = "Neuromancer",            author = "William Gibson",    pages = 200,  progress = 45, time_remaining = 8966 },
+            { title = "Foundation",             author = "Isaac Asimov",      pages = 1200, progress = 67, time_remaining = 22751 },
+            { title = "Dune",                   author = "Frank Herbert",     pages = 1000, progress = 23, time_remaining = 13340 },
         }
     end
 
@@ -223,33 +261,53 @@ local function buildBookshelfWidget()
             max_width = 0.8 * book_width,
         }
 
+        local author_text = book.author
+        if show_percent_completed and not considerBookComplete(progress, assume_finished_at_percent) then
+            author_text = progress .. "% • " .. author_text
+        end
+        if show_time_remaining and (not considerBookComplete(progress, assume_finished_at_percent)) and book.time_remaining then -- toggle via setting
+            author_text = formatTimeRemaining(book.time_remaining) .. " • " .. author_text
+        end
         local author_widget = TextWidget:new {
-            text = book.author,
+            text = author_text,
             face = author_face,
             fgcolor = Blitbuffer.Color8(0x40),
             max_width = 0.7 * book_width,
         }
 
-
-        local spine_content = HorizontalGroup:new {
-            -- Progress bar (fills from left based on % read)
-            FrameContainer:new {
-                width = progress_width,
-                height = book_height,
-                background = base_color,
-                bordersize = 0,
-                padding = 0,
-                HorizontalSpan:new { width = progress_width },
-            },
-            FrameContainer:new {
-                width = book_width - progress_width,
-                height = book_height,
-                background = accent_color,
-                bordersize = 0,
-                padding = 0,
-                HorizontalSpan:new { width = book_width - progress_width },
+        local spine_content = nil
+        if considerBookComplete(progress, assume_finished_at_percent) then
+            spine_content = HorizontalGroup:new {
+                FrameContainer:new {
+                    width = book_width,
+                    height = book_height,
+                    background = base_color,
+                    bordersize = 0,
+                    padding = 0,
+                    HorizontalSpan:new { width = book_width },
+                },
             }
-        }
+        else
+            spine_content = HorizontalGroup:new {
+                -- Progress bar (fills from left based on % read)
+                FrameContainer:new {
+                    width = progress_width,
+                    height = book_height,
+                    background = base_color,
+                    bordersize = 0,
+                    padding = 0,
+                    HorizontalSpan:new { width = progress_width },
+                },
+                FrameContainer:new {
+                    width = book_width - progress_width,
+                    height = book_height,
+                    background = accent_color,
+                    bordersize = 0,
+                    padding = 0,
+                    HorizontalSpan:new { width = book_width - progress_width },
+                }
+            }
+        end
 
         local spine_with_border = FrameContainer:new {
             width = book_width,
@@ -260,24 +318,12 @@ local function buildBookshelfWidget()
             spine_content,
         }
 
-        local book_with_shadow = OverlapGroup:new {
+        local spine_with_shadows = OverlapGroup:new {
             dimen = { w = book_width + shadow_size + 2, h = book_height + shadow_size + 2 },
             spine_with_border,
-            -- Vertical band overlay
-            HorizontalGroup:new {
-                HorizontalSpan:new { width = math.floor(book_width * 0.05) },
-                FrameContainer:new {
-                    width = band_size,
-                    height = book_height + 2,
-                    background = band_color,
-                    bordersize = 0,
-                    padding = 0,
-                    HorizontalSpan:new { width = book_width },
-                },
-            },
             -- Right shadow
             HorizontalGroup:new {
-                HorizontalSpan:new { width = book_width + 2 },
+                HorizontalSpan:new { width = book_width },
                 FrameContainer:new {
                     width = shadow_size + 5,
                     height = book_height + 5,
@@ -289,7 +335,7 @@ local function buildBookshelfWidget()
             },
             -- Bottom shadow
             VerticalGroup:new {
-                VerticalSpan:new { width = book_height + 1 },
+                VerticalSpan:new { width = book_height },
                 FrameContainer:new {
                     width = book_width + shadow_size + 2,
                     height = shadow_size,
@@ -300,24 +346,60 @@ local function buildBookshelfWidget()
                 },
             },
         }
+        if show_book_bands then
+            local left_band_loc = math.floor(book_width * 0.05 * (1 + height_factor))
+            spine_with_shadows = OverlapGroup:new {
+                dimen = { w = book_width, h = book_height },
+                spine_with_shadows,
+                -- Vertical left band
+                HorizontalGroup:new {
+                    HorizontalSpan:new { width = left_band_loc },
+                    FrameContainer:new {
+                        width = band_size,
+                        height = book_height,
+                        background = band_color,
+                        bordersize = 1,
+                        color = Blitbuffer.COLOR_BLACK,
+                        padding = 0,
+                        HorizontalSpan:new { width = book_width },
+                    },
+                }
+            }
+
+            if considerBookComplete(progress, assume_finished_at_percent) then
+                spine_with_shadows = OverlapGroup:new {
+                    dimen = { w = book_width, h = book_height },
+                    spine_with_shadows,
+                    -- Vertical left band
+                    HorizontalGroup:new {
+                        HorizontalSpan:new { width = book_width - left_band_loc - band_size },
+                        FrameContainer:new {
+                            width = band_size,
+                            height = book_height,
+                            background = band_color,
+                            bordersize = 1,
+                            color = Blitbuffer.COLOR_BLACK,
+                            padding = 0,
+                            HorizontalSpan:new { width = book_width },
+                        },
+                    }
+                }
+            end
+        end
 
         local full_book = OverlapGroup:new {
             dimen = { w = max_width, h = book_height + shadow_size },
-            book_with_shadow,
-            -- Centered text overlay
+            spine_with_shadows,
             HorizontalGroup:new {
                 align = "center",
-                HorizontalSpan:new { width = book_width / 2 - (title_widget:getSize().w / 2) },
+                HorizontalSpan:new { width = (book_width / 2) - (math.max(title_widget:getSize().w, author_widget:getSize().w) / 2) },
                 VerticalGroup:new {
                     align = "center",
-                    VerticalSpan:new {
-                        width = (book_height - title_widget:getSize().h - author_widget:getSize().h - Screen:scaleBySize(2)) / 2
-                    },
+                    VerticalSpan:new { width = (book_height - title_widget:getSize().h - author_widget:getSize().h) / 2 },
                     title_widget,
-                    VerticalSpan:new { width = Screen:scaleBySize(1) },
-                    author_widget,
-                },
-            },
+                    author_widget
+                }
+            }
         }
 
 
@@ -359,7 +441,7 @@ local function buildBookshelfWidget()
         },
     }
 
-    if cat_widget then
+    if cat_widget and show_cat then
         return OverlapGroup:new {
             dimen = screen_size,
             main_stack,
