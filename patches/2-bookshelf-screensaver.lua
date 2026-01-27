@@ -101,15 +101,53 @@ local function getRecentBooks(max_books)
     return books
 end
 
-local function getBookColor(index)
-    local shades = {
-        Blitbuffer.Color8(0xA0),
-        Blitbuffer.Color8(0x80),
-        Blitbuffer.Color8(0xB0),
-        Blitbuffer.Color8(0x90),
-    }
-    return shades[((index - 1) % #shades) + 1]
+local function isColorScreen()
+    return Screen:isColorEnabled() or Screen:isColorScreen()
 end
+
+local function getBookColor(index)
+    if isColorScreen() then
+        local colors = {
+            Blitbuffer.ColorRGB32(220, 120, 120, 255), -- Light red
+            Blitbuffer.ColorRGB32(120, 190, 120, 255), -- Light green
+            Blitbuffer.ColorRGB32(130, 160, 220, 255), -- Light blue
+        }
+        return colors[((index - 1) % #colors) + 1]
+    else
+        local shades = {
+            Blitbuffer.Color8(0xA0),
+            Blitbuffer.Color8(0x80),
+            Blitbuffer.Color8(0xB0),
+            Blitbuffer.Color8(0x90),
+        }
+        return shades[((index - 1) % #shades) + 1]
+    end
+end
+
+local function getShadowColor()
+    if isColorScreen() then
+        return Blitbuffer.ColorRGB32(80, 80, 80, 255)
+    else
+        return Blitbuffer.Color8(0x40)
+    end
+end
+
+local function getBandColor()
+    if isColorScreen() then
+        return Blitbuffer.ColorRGB32(230, 190, 50, 255) -- Yellow/gold
+    else
+        return Blitbuffer.Color8(0x30)
+    end
+end
+
+local function getAccentColor()
+    if isColorScreen() then
+        return Blitbuffer.ColorRGB32(240, 235, 220, 255) -- Warm cream
+    else
+        return Blitbuffer.Color8(0xE0)
+    end
+end
+
 
 local function buildBookshelfWidget()
     local screen_size = Screen:getSize()
@@ -122,10 +160,10 @@ local function buildBookshelfWidget()
     if not books then
         -- Fake book data as fallback/if no data yet
         books = {
+            { title = "1984",        author = "George Orwell",  pages = 180,  progress = 89 },
             { title = "Neuromancer", author = "William Gibson", pages = 200,  progress = 45 },
             { title = "Foundation",  author = "Isaac Asimov",   pages = 1200, progress = 67 },
             { title = "Dune",        author = "Frank Herbert",  pages = 1000, progress = 23 },
-            { title = "1984",        author = "George Orwell",  pages = 180,  progress = 89 },
         }
     end
 
@@ -140,7 +178,8 @@ local function buildBookshelfWidget()
 
     local spacing = Screen:scaleBySize(3)
     local shadow_size = Screen:scaleBySize(2)
-    local shadow_color = Blitbuffer.Color8(0x40)
+    local shadow_color = getShadowColor()
+    local band_color = getBandColor()
 
     for i = 1, num_books do
         local book = books[i]
@@ -165,12 +204,10 @@ local function buildBookshelfWidget()
         max_width = math.max(max_width, book_width)
         total_height = total_height + book_height + shadow_size + shadow_size
 
-        local band_size = Screen:scaleBySize(4 + math.floor(2 * height_factor))
-        local band_color = Blitbuffer.Color8(0x30)
-        local band_spacing = Screen:scaleBySize(3)
+        local band_size = Screen:scaleBySize(5 + math.floor(3 * height_factor))
 
         local base_color = getBookColor(i)
-        local accent_color = Blitbuffer.Color8(0xE0) -- Light gray for uncompleted portion
+        local accent_color = getAccentColor()
 
         local progress = book.progress or 0
         local progress_width = math.floor(book_width * (progress / 100))
@@ -228,7 +265,7 @@ local function buildBookshelfWidget()
             spine_with_border,
             -- Vertical band overlay
             HorizontalGroup:new {
-                HorizontalSpan:new { width = book_width - band_size - Screen:scaleBySize(20) },
+                HorizontalSpan:new { width = math.floor(book_width * 0.05) },
                 FrameContainer:new {
                     width = band_size,
                     height = book_height + 2,
@@ -331,7 +368,7 @@ local function buildBookshelfWidget()
                     width = top_margin - cat_size + Screen:scaleBySize(10),
                 },
                 HorizontalGroup:new {
-                    HorizontalSpan:new { width = top_width - cat_size + Screen:scaleBySize(10) },
+                    HorizontalSpan:new { width = top_width - cat_size + Screen:scaleBySize(20) },
                     cat_widget,
                 },
             },
