@@ -16,12 +16,30 @@ local HorizontalSpan = require("ui/widget/horizontalspan")
 local VerticalSpan = require("ui/widget/verticalspan")
 local OverlapGroup = require("ui/widget/overlapgroup")
 
-local DocSettings = require("docsettings")
-local ReadHistory = require("readhistory")
-
 local Screen = Device.screen
 
 local STATISTICS_DB_PATH = DataStorage:getSettingsDir() .. "/statistics.sqlite3"
+
+local function createDottedBackground()
+    local screen_size = Screen:getSize()
+    local bb = Blitbuffer.new(screen_size.w, screen_size.h, Blitbuffer.TYPE_BB8)
+
+    bb:fill(Blitbuffer.Color8(0xF5)) -- Light base
+
+    local dot_spacing = Screen:scaleBySize(25)
+    local dot_size = Screen:scaleBySize(2)
+    for y = dot_spacing, screen_size.h - 1, dot_spacing do
+        for x = dot_spacing, screen_size.w - 1, dot_spacing do
+            bb:paintRect(x, y, dot_size, dot_size, Blitbuffer.Color8(0xD0))
+        end
+    end
+
+    return ImageWidget:new {
+        image = bb,
+        width = screen_size.w,
+        height = screen_size.h,
+    }
+end
 
 local function getRecentBooks(max_books)
     if not STATISTICS_DB_PATH or STATISTICS_DB_PATH == "" then
@@ -88,8 +106,8 @@ local function getRecentBooks(max_books)
             time_remaining = math.floor(avg_time_per_page * pages_remaining)
         end
 
-        print(string.format("DEBUG: Found book - %s by %s (%d/%d pages, time %d)",
-            title, author, current_page, pages, time_remaining))
+        print(string.format("DEBUG: Found book - %s by %s (%d/%d pages, time %s)",
+            title, author, current_page, pages, tostring(time_remaining or "N/A")))
 
         -- Calculate progress percentage
         local progress = math.floor((current_page / pages) * 100)
@@ -164,7 +182,7 @@ local function getBandColor()
     if isColorScreen() then
         return Blitbuffer.ColorRGB32(230, 190, 50, 255) -- Yellow/gold
     else
-        return Blitbuffer.Color8(0xFF)
+        return Blitbuffer.Color8(0xF0)
     end
 end
 
@@ -183,6 +201,7 @@ end
 
 local function buildBookshelfWidget()
     local screen_size = Screen:getSize()
+    local show_background = true
     local show_cat = true
     local show_time_remaining = true
     local show_percent_completed = true
@@ -196,7 +215,7 @@ local function buildBookshelfWidget()
 
     if not books then
         -- Fake book data as fallback/if no data yet
-        local books = {
+        books = {
             { title = "1984",                   author = "George Orwell",     pages = 180,  progress = 89, time_remaining = 24729 },
             { title = "Mistborn: Final Empire", author = "Brandon Sanderson", pages = 600,  progress = 98, time_remaining = 6552 },
             { title = "Neuromancer",            author = "William Gibson",    pages = 200,  progress = 45, time_remaining = 8966 },
@@ -418,6 +437,16 @@ local function buildBookshelfWidget()
 
     local top_margin = math.max(0, screen_size.h - total_height)
 
+    local main_stack = VerticalGroup:new {
+        VerticalSpan:new {
+            width = top_margin - Screen:scaleBySize(20),
+        },
+        HorizontalGroup:new {
+            HorizontalSpan:new { width = Screen:scaleBySize(20) },
+            books_stack
+        },
+    }
+
     local cat_widget = nil
     local cat_path = DataStorage:getDataDir() .. "/patches/cat.png"
     local cat_size = Screen:scaleBySize(200)
@@ -431,36 +460,36 @@ local function buildBookshelfWidget()
         }
     end
 
-    local main_stack = VerticalGroup:new {
-        VerticalSpan:new {
-            width = top_margin - Screen:scaleBySize(20),
-        },
-        HorizontalGroup:new {
-            HorizontalSpan:new { width = Screen:scaleBySize(20) },
-            books_stack
-        },
+    -- At the end, layer it:
+    local final_widget = OverlapGroup:new {
+        dimen = screen_size,
     }
 
-    if cat_widget and show_cat then
-        return OverlapGroup:new {
-            dimen = screen_size,
-            main_stack,
-            VerticalGroup:new {
-                VerticalSpan:new {
-                    width = top_margin - cat_size + Screen:scaleBySize(10),
-                },
-                HorizontalGroup:new {
-                    HorizontalSpan:new { width = top_width - cat_size + Screen:scaleBySize(20) },
-                    cat_widget,
-                },
-            },
-        }
-    else
-        return OverlapGroup:new {
-            dimen = screen_size,
-            main_stack,
-        }
+    -- Add background first (bottom layer)
+    if show_background then
+        local bg_widget = createDottedBackground()
+
+        table.insert(final_widget, bg_widget)
     end
+
+    -- Add your content on top
+    table.insert(final_widget, main_stack)
+
+    -- Add cat on top of everything
+    if show_cat and cat_widget then
+        table.insert(final_widget, VerticalGroup:new {
+            -- ... cat positioning ...
+            VerticalSpan:new {
+                width = top_margin - cat_size + Screen:scaleBySize(10),
+            },
+            HorizontalGroup:new {
+                HorizontalSpan:new { width = top_width - cat_size + Screen:scaleBySize(20) },
+                cat_widget,
+            },
+        })
+    end
+
+    return final_widget
 end
 
 local Screensaver = require("ui/screensaver")
