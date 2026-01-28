@@ -319,20 +319,12 @@ local function buildBookshelfWidget()
     local finished_threshold = getSetting(SETTINGS.FINISHED_THRESHOLD, DEFAULTS.FINISHED_THRESHOLD)
 
     local books = getRecentBooks(num_books)
-    books = {
-        { title = "A Psalm for the Wild-Built",              author = "Becky Chambers",      pages = 180,  progress = 5,  time_remaining = 6540 },
-        { title = "Project Hail Mary",                       author = "Andy Weir",           pages = 600,  progress = 68, time_remaining = 12660 },
-        { title = "Not Quite Dead Yet",                      author = "Holly Jackson",       pages = 450,  progress = 98, time_remaining = 30 },
-        { title = "A Knight of the Seven Kingdoms",          author = "George R. R. Martin", pages = 500,  progress = 11, time_remaining = 22740 },
-        { title = "Whispers of Scarlet and Midnight Blooms", author = "SakakiHaruna12",      pages = 1300, progress = 77, time_remaining = 13320 },
-    }
-
     if not books then
         books = {
             { title = "A Psalm for the Wild-Built",              author = "Becky Chambers",      pages = 180,  progress = 5,  time_remaining = 6540 },
-            { title = "Project Hail Mary",                       author = "Andy Weir",           pages = 600,  progress = 68, time_remaining = 12660 },
+            { title = "Project Hail Mary",                       author = "Andy Weir",           pages = 600,  progress = 67, time_remaining = 12660 },
             { title = "Not Quite Dead Yet",                      author = "Holly Jackson",       pages = 450,  progress = 98, time_remaining = 30 },
-            { title = "A Knight of the Seven Kingdoms",          author = "George R. R. Martin", pages = 500,  progress = 11, time_remaining = 22740 },
+            { title = "A Knight of the Seven Kingdoms",          author = "George R. R. Martin", pages = 500,  progress = 33, time_remaining = 11370 },
             { title = "Whispers of Scarlet and Midnight Blooms", author = "SakakiHaruna12",      pages = 1300, progress = 77, time_remaining = 13320 },
         }
     end
@@ -370,8 +362,6 @@ local function buildBookshelfWidget()
         end
         max_width = math.max(max_width, book_width)
         total_height = total_height + book_height + shadow_size + shadow_size
-
-        local band_size = Screen:scaleBySize(5 + math.floor(3 * height_factor))
 
         local base_color = getBookColor(i, use_random_colors)
         local accent_color = getAccentColor()
@@ -475,23 +465,66 @@ local function buildBookshelfWidget()
         }
 
         if show_progress_bands then
-            local left_band_loc = math.floor(book_width * 0.05)
-            spine = OverlapGroup:new {
-                dimen = { w = book_width, h = book_height },
-                spine,
-                HorizontalGroup:new {
-                    HorizontalSpan:new { width = left_band_loc },
-                    FrameContainer:new {
-                        width = band_size,
-                        height = book_height,
-                        background = band_color,
-                        bordersize = 1,
-                        color = Blitbuffer.COLOR_BLACK,
-                        padding = 0,
-                        HorizontalSpan:new { width = book_width },
-                    },
+            local band_size = math.floor(book_width * 0.02)
+            local band_spacing = math.floor(book_width * 0.03)
+            local left_band_loc = math.floor(book_width * 0.04)
+
+            if progress >= 25 then
+                spine = OverlapGroup:new {
+                    dimen = { w = book_width, h = book_height },
+                    spine,
+                    HorizontalGroup:new {
+                        HorizontalSpan:new { width = left_band_loc },
+                        FrameContainer:new {
+                            width = band_size,
+                            height = book_height + 2,
+                            background = band_color,
+                            bordersize = 1,
+                            color = Blitbuffer.COLOR_BLACK,
+                            padding = 0,
+                            HorizontalSpan:new { width = book_width },
+                        },
+                    }
                 }
-            }
+            end
+
+            if progress >= 50 then
+                spine = OverlapGroup:new {
+                    dimen = { w = book_width, h = book_height },
+                    spine,
+                    HorizontalGroup:new {
+                        HorizontalSpan:new { width = left_band_loc + band_spacing },
+                        FrameContainer:new {
+                            width = band_size,
+                            height = book_height + 2,
+                            background = band_color,
+                            bordersize = 1,
+                            color = Blitbuffer.COLOR_BLACK,
+                            padding = 0,
+                            HorizontalSpan:new { width = book_width },
+                        },
+                    }
+                }
+            end
+
+            if progress >= 75 then
+                spine = OverlapGroup:new {
+                    dimen = { w = book_width, h = book_height },
+                    spine,
+                    HorizontalGroup:new {
+                        HorizontalSpan:new { width = book_width - left_band_loc - band_spacing - band_size },
+                        FrameContainer:new {
+                            width = band_size,
+                            height = book_height + 2,
+                            background = band_color,
+                            bordersize = 1,
+                            color = Blitbuffer.COLOR_BLACK,
+                            padding = 0,
+                            HorizontalSpan:new { width = book_width },
+                        },
+                    }
+                }
+            end
 
             if considerBookComplete(progress, finished_threshold) then
                 spine = OverlapGroup:new {
@@ -501,7 +534,7 @@ local function buildBookshelfWidget()
                         HorizontalSpan:new { width = book_width - left_band_loc - band_size },
                         FrameContainer:new {
                             width = band_size,
-                            height = book_height,
+                            height = book_height + 2,
                             background = band_color,
                             bordersize = 1,
                             color = Blitbuffer.COLOR_BLACK,
