@@ -169,10 +169,11 @@ local function getRecentBooks(max_books)
     local sql_stmt = string.format([[
         SELECT b.title, b.authors, b.pages, MAX(p.start_time) as last_read,
             (SELECT page FROM page_stat WHERE id_book = b.id ORDER BY start_time DESC LIMIT 1) as current_page,
-            b.total_read_time, b.total_read_pages, b.md5
+            b.total_read_time, b.total_read_pages
         FROM book b
         LEFT JOIN page_stat p ON b.id = p.id_book
         GROUP BY b.id
+        HAVING current_page * 100 >= pages
         ORDER BY last_read DESC
         LIMIT %d;
     ]], max_books)
