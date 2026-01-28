@@ -352,7 +352,7 @@ local function buildBookshelfWidget()
             { title = "A Psalm for the Wild-Built",     author = "Becky Chambers",      pages = 180,  progress = 5,  time_remaining = 6540 },
             { title = "A Game of Thrones",              author = "George R. R. Martin", pages = 1200, progress = 98, time_remaining = 500 },
             { title = "A Knight of the Seven Kingdoms", author = "George R. R. Martin", pages = 500,  progress = 33, time_remaining = 11370 },
-            { title = "Pride and Prejudice",            author = "Jane Austen",         pages = 280,  progress = 98, time_remaining = 0 },
+            { title = "Pride and Prejudice",            author = "Jane Austen",         pages = 280,  progress = 0,  time_remaining = 0 },
             { title = "Dracula",                        author = "Bram Stoker",         pages = 1100, progress = 80, time_remaining = 12000 },
         }
     end
@@ -409,10 +409,10 @@ local function buildBookshelfWidget()
         }
 
         local author_text = book.author
-        if show_percent_completed and not considerBookComplete(progress, finished_threshold) then
+        if show_percent_completed and progress > 0 and not considerBookComplete(progress, finished_threshold) then
             author_text = progress .. "% • " .. author_text
         end
-        if show_time_left and not considerBookComplete(progress, finished_threshold) and book.time_remaining then
+        if show_time_left and progress > 0 and not considerBookComplete(progress, finished_threshold) and book.time_remaining then
             author_text = T(_("%1 left"), formatTimeRemaining(book.time_remaining)) .. " • " .. author_text
         end
 
@@ -495,7 +495,7 @@ local function buildBookshelfWidget()
 
         -- ----------------------------- Progress bands ----------------------------- --
         if show_progress_bands then
-            -- Difference percentage of the book width
+            -- Different percentage of the book width
             local band_size = math.floor(book_width * 0.02)
             local band_spacing = math.floor(book_width * 0.03)
             local left_band_loc = math.floor(book_width * 0.04)
