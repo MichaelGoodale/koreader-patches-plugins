@@ -39,6 +39,7 @@ local STACK_DECOR_WIDTH    = Screen:scaleBySize(200)
 local STACK_DECOR_HEIGHT   = Screen:scaleBySize(200)
 -- Decor is anchored to the top right of top book. Offset exists to accommodate whitespace.
 -- Increasing X pushes decor to wards right edge, Increasing Y pushes decor downwards
+-- Cat Image https://www.citypng.com/photo/8d974a35/vector-black-cat-silhouette-sitting-hd-transparent-png
 local STACK_DECOR_OFFSET_X = Screen:scaleBySize(50)
 local STACK_DECOR_OFFSET_Y = Screen:scaleBySize(5)
 
